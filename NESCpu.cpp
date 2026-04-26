@@ -2,6 +2,8 @@
 #include <cstdint>
 
 struct CPU {
+  uint16_t address = 0; // stores where the operand located 
+  uint8_t fetched = 0; // reads the operand byte from the location determined by the addressing mode
   // Registers
   uint8_t A = 0; // Accumulator
   uint8_t X = 0; // Index X
@@ -20,6 +22,10 @@ struct CPU {
     memory[addr] = value;
   }
 
+  uint8_t fetch() {
+    fetched = read(address);
+    return fetched;
+  }
   void setZN(uint8_t value) { // bit manipulation to speed up
     P &= ~(0x02 | 0x80);
     P |= (value == 0) << 1; // sets flag for if zero
@@ -30,14 +36,17 @@ struct CPU {
 // Adressing Modes
 
 uint8_t IMM(CPU& cpu) {
-  return cpu.read(cpu.PC++);
+  cpu.address = cpu.PC++;
+  return 0;
 }
 
 uint8_t ZP(CPU& cpu) {
-  return cpu.read(cpu.read(cpu.PC++));
+  cpu.address = cpu.read(cpu.PC++);
+  return 0;
 }
-void LDA(CPU& cpu, uint8_t value) {
-  cpu.A = value;
+
+void LDA(CPU& cpu) {
+  cpu.A = cpu.fetch();
   cpu.setZN(cpu.A);
 }
 
@@ -46,7 +55,7 @@ void LDA(CPU& cpu, uint8_t value) {
 struct Instruction {
   const char* name; // name, for debugging purposes
   uint8_t (*addrmode)(CPU&); // what address mode is this instruction
-  void (*execute)(CPU&, uint8_t); // point to the actual function itself
+  void (*execute)(CPU&); // point to the actual function itself
   uint8_t bytes; // 1 byte -> implicit commands
                  // 2 byte -> normal commands
                  // 3 byte -> commands with a two byte value
@@ -71,8 +80,8 @@ int main() {
   uint8_t opcode = cpu.read(cpu.PC++);
   Instruction& inst = table[opcode]; // retrieve instruction
 
-  uint8_t value = inst.addrmode(cpu);
-  inst.execute(cpu, value);
+  inst.addrmode(cpu);
+  inst.execute(cpu);
 
   std::cout << "A = " << (int)cpu.A << "\n";
 }
