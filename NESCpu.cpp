@@ -46,10 +46,10 @@ uint8_t ZP(CPU& cpu) {
 }
 
 uint8_t ABS(CPU& cpu) { // must switch lo and hi because input is little-endian format
-    uint8_t lo = cpu.read(cpu.PC++);
-    uint8_t hi = cpu.read(cpu.PC++);
-    cpu.address = (hi << 8) | lo;
-    return 0;
+  uint8_t lo = cpu.read(cpu.PC++);
+  uint8_t hi = cpu.read(cpu.PC++);
+  cpu.address = (hi << 8) | lo;
+  return 0;
 }
 
 // Instructions
@@ -69,8 +69,67 @@ void LDA(CPU& cpu) {
   cpu.setZN(cpu.A);
 }
 
+void LDX(CPU& cpu) {
+  cpu.X = cpu.fetch();
+  cpu.setZN(cpu.X);
+}
+
+void LDY(CPU& cpu) {
+  cpu.Y = cpu.fetch();
+  cpu.setZN(cpu.Y);
+}
+
 void STA(CPU& cpu) {
   cpu.write(cpu.address, cpu.A);
+}
+
+void TAX(CPU& cpu) {
+  cpu.X = cpu.A;
+  cpu.setZN(cpu.X);
+}
+
+void TXA(CPU& cpu) {
+  cpu.A = cpu.X;
+  cpu.setZN(cpu.A);
+}
+
+void TAY(CPU& cpu) {
+  cpu.Y = cpu.A;
+  cpu.setZN(cpu.Y);
+}
+
+void TYA(CPU& cpu) {
+  cpu.A = cpu.Y;
+  cpu.setZN(cpu.A);
+}
+
+void TSX(CPU& cpu) {
+  cpu.X = cpu.SP;
+  cpu.setZN(cpu.X);
+}
+
+void TXS(CPU& cpu) {
+  cpu.SP = cpu.X;
+}
+
+void DEX(CPU& cpu) {
+  cpu.X -= 1;
+  cpu.setZN(cpu.X);
+}
+
+void DEY(CPU& cpu) {
+  cpu.Y -= 1;
+  cpu.setZN(cpu.Y);
+}
+
+void INX(CPU& cpu) {
+  cpu.X += 1;
+  cpu.setZN(cpu.X);
+}
+
+void INY(CPU& cpu) {
+  cpu.Y += 1;
+  cpu.setZN(cpu.Y);
 }
 
 Instruction table[256] = {};
@@ -79,16 +138,36 @@ void initTable() {
   table[0xA9] = {"LDA", IMM, LDA, 2, 2};
   table[0xA5] = {"LDA", ZP,  LDA, 2, 3};
   table[0xAD] = {"LDA", ABS, LDA, 3, 4};
+
   table[0x85] = {"STA", ZP,  STA, 2, 3};
   table[0x8D] = {"STA", ABS, STA, 3, 4};
+
+  table[0xA2] = {"LDX", IMM, LDX, 2, 2};
+  table[0xA6] = {"LDX", ZP,  LDX, 2, 3};
+  table[0xAE] = {"LDX", ABS, LDX, 3, 4};
+
+  table[0xA0] = {"LDY", IMM, LDY, 2, 2};
+  table[0xA4] = {"LDY", ZP,  LDY, 2, 3};
+  table[0xAC] = {"LDY", ABS, LDY, 3, 4};
+
+  table[0xAA] = {"TAX", nullptr, TAX, 1, 2};
+  table[0xA8] = {"TAY", nullptr, TAY, 1, 2};
+  table[0x8A] = {"TXA", nullptr, TXA, 1, 2};
+  table[0x98] = {"TYA", nullptr, TYA, 1, 2};
+  table[0xE8] = {"INX", nullptr, INX, 1, 2};
+  table[0xC8] = {"INY", nullptr, INY, 1, 2};
+  table[0xCA] = {"DEX", nullptr, DEX, 1, 2};
+  table[0x88] = {"DEY", nullptr, DEY, 1, 2};
+  table[0xBA] = {"TSX", nullptr, TSX, 1, 2};
+  table[0x9A] = {"TXS", nullptr, TXS, 1, 2};
 }
 
 void step(CPU& cpu) {
-    uint8_t opcode = cpu.read(cpu.PC++);
-    Instruction& inst = table[opcode];
+  uint8_t opcode = cpu.read(cpu.PC++);
+  Instruction& inst = table[opcode];
 
-    inst.addrmode(cpu);
-    inst.execute(cpu);
+  if (inst.addrmode) {inst.addrmode(cpu);}; // if address is provided
+  inst.execute(cpu);
 }
 
 int main() {
