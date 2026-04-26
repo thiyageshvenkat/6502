@@ -45,9 +45,11 @@ uint8_t ZP(CPU& cpu) {
   return 0;
 }
 
-void LDA(CPU& cpu) {
-  cpu.A = cpu.fetch();
-  cpu.setZN(cpu.A);
+uint8_t ABS(CPU& cpu) { // must switch lo and hi because input is little-endian format
+    uint8_t lo = cpu.read(cpu.PC++);
+    uint8_t hi = cpu.read(cpu.PC++);
+    cpu.address = (hi << 8) | lo;
+    return 0;
 }
 
 // Instructions
@@ -62,26 +64,50 @@ struct Instruction {
   int cycles; // some commands take more cycles than others
 };
 
+void LDA(CPU& cpu) {
+  cpu.A = cpu.fetch();
+  cpu.setZN(cpu.A);
+}
+
+void STA(CPU& cpu) {
+  cpu.write(cpu.address, cpu.A);
+}
+
 Instruction table[256] = {};
 
 void initTable() {
   table[0xA9] = {"LDA", IMM, LDA, 2, 2};
   table[0xA5] = {"LDA", ZP,  LDA, 2, 3};
+  table[0xAD] = {"LDA", ABS, LDA, 3, 4};
+  table[0x85] = {"STA", ZP,  STA, 2, 3};
+  table[0x8D] = {"STA", ABS, STA, 3, 4};
+}
+
+void step(CPU& cpu) {
+    uint8_t opcode = cpu.read(cpu.PC++);
+    Instruction& inst = table[opcode];
+
+    inst.addrmode(cpu);
+    inst.execute(cpu);
 }
 
 int main() {
   CPU cpu;
-  initTable(); // fill table
+  initTable();
 
-  cpu.PC = 0x0000; // program counter initialized to beginning
-  cpu.memory[0x0000] = 0xA9; /// LDA opcode with IMM addrmode
-  cpu.memory[0x0001] = 0x42; // operand: value 0x42
-                             //
-  uint8_t opcode = cpu.read(cpu.PC++);
-  Instruction& inst = table[opcode]; // retrieve instruction
+  cpu.PC = 0x0000;
 
-  inst.addrmode(cpu);
-  inst.execute(cpu);
+  // LDA #$42
+  cpu.memory[0x0000] = 0xA9;
+  cpu.memory[0x0001] = 0x42;
+
+  // STA $10
+  cpu.memory[0x0002] = 0x85;
+  cpu.memory[0x0003] = 0x10;
+
+  step(cpu); // runs LDA
+  step(cpu); // runs STA
 
   std::cout << "A = " << (int)cpu.A << "\n";
+  std::cout << "mem[0x10] = " << (int)cpu.memory[0x10] << "\n";
 }
