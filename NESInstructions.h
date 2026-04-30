@@ -24,6 +24,15 @@ struct Instruction {
   // number of CPU cycles this instruction takes
 };
 
+uint8_t IMM(CPU& cpu);
+uint8_t ZP(CPU& cpu);
+uint8_t ABS(CPU& cpu);
+uint8_t ABSX(CPU& cpu);
+uint8_t ABSY(CPU& cpu);
+uint8_t REL(CPU& cpu);
+uint8_t ZPX(CPU& cpu);
+uint8_t IND(CPU& cpu);
+
 // global opcode table (256 possible opcodes)
 extern Instruction table[256];
 
