@@ -1,2 +1,6 @@
 NESCpu
 Emulon
+*.o
+*.out
+*.exe
+imgui.ini
