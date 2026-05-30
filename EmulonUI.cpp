@@ -20,6 +20,7 @@ static bool hasTrace = false; // true after first step
 static char asm_buffer[65536] = {}; // text buffer for asm editor
 static float cpuPanelWidth = 250.0f; // remembered CPU panel size
 static float editorPanelHeight = 260.0f; // remembered editor panel size
+static bool showSettings = false;
 
 // helpers to process the program.asm file
 static std::string readTextFile(const std::string& path) {
@@ -76,7 +77,25 @@ int main() {
     IMGUI_CHECKVERSION(); // checks if the ImGui version in the headers match the compiled ImGui code
     ImGui::CreateContext(); // creates ImGui’s internal global state.
 
-    ImGui::StyleColorsDark(); // dark mode
+    ImGuiStyle& style = ImGui::GetStyle();
+    style.WindowRounding = 6.0f;
+    style.ChildRounding = 6.0f;
+    style.FrameRounding = 4.0f;
+    style.ScrollbarRounding = 4.0f;
+    style.GrabRounding = 4.0f;
+    style.WindowPadding = ImVec2(8, 8);
+    style.FramePadding = ImVec2(6, 4);
+    style.ItemSpacing = ImVec2(8, 6);
+    style.ChildBorderSize = 1.0f;
+    // add custom font
+    ImGuiIO& io = ImGui::GetIO();
+
+    io.Fonts->AddFontFromFileTTF(
+        "/mnt/c/Windows/Fonts/consola.ttf",
+        18.0f
+    );
+
+    ImGui::StyleColorsDark();
 
     ImGui_ImplGlfw_InitForOpenGL(window, true); // connects ImGui to GLFW
     ImGui_ImplOpenGL3_Init(glsl_version); // Connects ImGui to OpenGL 
@@ -121,7 +140,11 @@ int main() {
 
       // left side: controls and CPU registers
       ImGui::BeginChild("CPU Panel", ImVec2(cpuPanelWidth, mainHeight), true); // left panel
-
+      ImGui::TextDisabled("CPU");
+      ImGui::Separator();
+      if (ImGui::Button("Settings")) {
+        showSettings = !showSettings;
+      }
       if (ImGui::Button("Step")) {
         lastTrace = step(cpu); // run one CPU instruction
         hasTrace = true; // now trace info is valid
@@ -179,7 +202,8 @@ int main() {
       if (editorPanelHeight > maxEditorHeight) editorPanelHeight = maxEditorHeight;
 
       ImGui::BeginChild("Editor Panel", ImVec2(0, editorPanelHeight), true); // top right panel
-
+      ImGui::TextDisabled("program.asm");
+      ImGui::Separator();
       if (ImGui::Button("Save")) {
         writeTextFile("program.asm", asm_buffer); // save editor text only
       }
@@ -216,37 +240,40 @@ int main() {
       }
 
       ImGui::BeginChild("Memory Panel", ImVec2(0, 0), true); // 0,0 fills the rest of right side
+      ImGui::TextDisabled("Memory");
+      ImGui::Separator();
       mem_edit.DrawContents(cpu.memory, 65536); // show full 64KB CPU memory
       ImGui::EndChild();
 
       ImGui::EndChild(); // end right side
 
       ImGui::End(); // end main Emulon window
+      if (showSettings) {
+        ImGui::Begin("Settings", &showSettings);
 
-      // separate settings window for quick visual tweaks
-      ImGui::Begin("Settings"); // quick UI tweaks while testing
+        ImGuiStyle& style = ImGui::GetStyle();
+        ImGuiIO& io = ImGui::GetIO();
 
-      ImGuiIO& io = ImGui::GetIO(); // global ImGui settings
+        ImGui::SliderFloat("UI font scale", &io.FontGlobalScale, 0.5f, 2.0f);
+        ImGui::SliderFloat("Frame rounding", &style.FrameRounding, 0.0f, 12.0f);
+        ImGui::SliderFloat("Window rounding", &style.WindowRounding, 0.0f, 12.0f);
+        ImGui::SliderFloat("Item spacing X", &style.ItemSpacing.x, 0.0f, 20.0f);
+        ImGui::SliderFloat("Item spacing Y", &style.ItemSpacing.y, 0.0f, 20.0f);
 
-      ImGui::SliderFloat("UI font scale", &io.FontGlobalScale, 0.5f, 2.0f); // resize all UI text
-      ImGui::SliderFloat("Frame rounding", &ImGui::GetStyle().FrameRounding, 0.0f, 12.0f); // round buttons/inputs
-      ImGui::SliderFloat("Window rounding", &ImGui::GetStyle().WindowRounding, 0.0f, 12.0f); // round windows
-      ImGui::SliderFloat("Item spacing X", &ImGui::GetStyle().ItemSpacing.x, 0.0f, 20.0f); // horizontal spacing
-      ImGui::SliderFloat("Item spacing Y", &ImGui::GetStyle().ItemSpacing.y, 0.0f, 20.0f); // vertical spacing
+        if (ImGui::Button("Dark")) {
+          ImGui::StyleColorsDark();
+        }
 
-      if (ImGui::Button("Dark")) {
-        ImGui::StyleColorsDark(); // switch to dark theme
+        ImGui::SameLine();
+
+        if (ImGui::Button("Light")) {
+          ImGui::StyleColorsLight();
+        }
+
+        ImGui::End();
       }
 
-      ImGui::SameLine();
-
-      if (ImGui::Button("Light")) {
-        ImGui::StyleColorsLight(); // switch to light theme
-      }
-
-      ImGui::End(); // end settings window
-      ImGui::Render(); // build draw commands
-
+      ImGui::Render();
       // render the finished ImGui frame with OpenGL
       // sort framebuffer width and height
       int display_w;
