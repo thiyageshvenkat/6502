@@ -35,13 +35,13 @@ uint8_t ABSY(CPU& cpu) {
 }
 
 uint8_t REL(CPU& cpu) {
-  int8_t offset = (int8_t)cpu.read(cpu.PC++);
-  cpu.address = cpu.PC + offset;
+  int8_t offset = (int8_t)cpu.read(cpu.PC++); // signed branch offset
+  cpu.address = cpu.PC + offset; // branches start from next instruction
   return 0;
 }
 
 uint8_t ZPX(CPU& cpu) {
-  cpu.address = (cpu.read(cpu.PC++) + cpu.X) & 0xFF;
+  cpu.address = (cpu.read(cpu.PC++) + cpu.X) & 0xFF; // zero-page wraps at $FF
   return 0;
 }
 
@@ -225,7 +225,7 @@ void EOR(CPU& cpu) {
 }
 
 void PHA(CPU& cpu) {
-  cpu.write(0x0100 + cpu.SP, cpu.A);
+  cpu.write(0x0100 + cpu.SP, cpu.A); // stack lives on page $01
   cpu.SP--;
 }
 
