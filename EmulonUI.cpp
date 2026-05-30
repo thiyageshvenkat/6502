@@ -6,6 +6,8 @@
 #include <GLFW/glfw3.h>
 #include "NESAssembler.h"
 #include "NESInstructions.h"
+#include "imfilebrowser.h"
+#include "TextEditor.h"
 #include <fstream>
 #include <sstream>
 #include <string>
@@ -20,7 +22,30 @@ static bool hasTrace = false; // true after first step
 static char asm_buffer[65536] = {}; // text buffer for asm editor
 static float cpuPanelWidth = 250.0f; // remembered CPU panel size
 static float editorPanelHeight = 260.0f; // remembered editor panel size
-static bool showSettings = false;
+static TextEditor asm_editor; // code editor
+static bool showSettings = false; // settings toggle
+static ImGui::FileBrowser openAsmDialog;
+
+static TextEditor::Language make6502Language() {
+  TextEditor::Language lang;
+
+  lang.name = "6502 Assembly";
+  lang.caseSensitive = false;
+  lang.singleLineComment = ";";
+
+  lang.keywords = {
+    "ADC", "AND", "ASL", "BCC", "BCS", "BEQ", "BIT", "BMI", "BNE", "BPL",
+    "BRK", "BVC", "BVS", "CLC", "CLD", "CLI", "CLV", "CMP", "CPX", "CPY",
+    "DEC", "DEX", "DEY", "EOR", "INC", "INX", "INY", "JMP", "JSR", "LDA",
+    "LDX", "LDY", "LSR", "NOP", "ORA", "PHA", "PHP", "PLA", "PLP", "ROL",
+    "ROR", "RTI", "RTS", "SBC", "SEC", "SED", "SEI", "STA", "STX", "STY",
+    "TAX", "TAY", "TSX", "TXA", "TXS", "TYA"
+  };
+
+  return lang;
+}
+
+
 
 // helpers to process the program.asm file
 static std::string readTextFile(const std::string& path) {
@@ -103,12 +128,15 @@ int main() {
     // emulator setup before the UI starts running
     initTable(); // fill opcode lookup table
 
-    std::string initial_asm = readTextFile("program.asm");
-    std::snprintf(asm_buffer, sizeof(asm_buffer), "%s", initial_asm.c_str()); // copy file into editor buffer
-
-    // Optional for now. Not true 6502 asm highlighting, but gives basic editor behavior.
-    // asm_editor.SetLanguage(TextEditor::Language::Cpp());
-
+    asm_editor.SetText(readTextFile("program.asm"));
+    asm_editor.SetReadOnlyEnabled(false);
+    asm_editor.SetShowLineNumbersEnabled(true);
+    asm_editor.SetShowScrollbarMiniMapEnabled(true);
+    asm_editor.SetShowWhitespacesEnabled(false);
+    asm_editor.SetTabSize(2);
+    asm_editor.SetPalette(TextEditor::GetDarkPalette());
+    openAsmDialog.SetTitle("File Explorer");
+    openAsmDialog.SetTypeFilters({ ".asm", ".*" });
     loadProgramIntoCpu(); // load first version of program before stepping
 
     // --- Main Loop --- //
@@ -135,6 +163,24 @@ int main() {
         ImGuiWindowFlags_NoNavFocus;
 
       ImGui::Begin("Emulon", nullptr, flags); // main app layout window
+
+      
+      // File Explorer
+
+      if (ImGui::Button("File Explorer")) {
+        openAsmDialog.Open();
+      }
+
+      openAsmDialog.Display();
+
+      if (openAsmDialog.HasSelected()) {
+        std::string path = openAsmDialog.GetSelected().string();
+        std::string text = readTextFile(path);
+
+        asm_editor.SetText(text);
+
+        openAsmDialog.ClearSelected();
+      }
       float mainHeight = ImGui::GetContentRegionAvail().y;
       float mainWidth = ImGui::GetContentRegionAvail().x;
 
@@ -202,26 +248,20 @@ int main() {
       if (editorPanelHeight > maxEditorHeight) editorPanelHeight = maxEditorHeight;
 
       ImGui::BeginChild("Editor Panel", ImVec2(0, editorPanelHeight), true); // top right panel
-      ImGui::TextDisabled("program.asm");
+      ImGui::TextDisabled("Code Editor");
       ImGui::Separator();
       if (ImGui::Button("Save")) {
-        writeTextFile("program.asm", asm_buffer); // save editor text only
+        writeTextFile("program.asm", asm_editor.GetText());
       }
 
       ImGui::SameLine();
 
       if (ImGui::Button("Save + Assemble")) {
-        writeTextFile("program.asm", asm_buffer);
-        loadProgramIntoCpu(); // reload CPU memory with new bytes
+        writeTextFile("program.asm", asm_editor.GetText());
+        loadProgramIntoCpu();
       }
 
-      ImGui::InputTextMultiline(
-          "##program_asm_editor",
-          asm_buffer,
-          sizeof(asm_buffer),
-          ImGui::GetContentRegionAvail(), // fill rest of editor panel
-          ImGuiInputTextFlags_AllowTabInput // tabs should edit asm, not move focus
-          );
+      asm_editor.Render("##program_asm_editor", ImGui::GetContentRegionAvail(), true);
 
       ImGui::EndChild();
 
@@ -262,12 +302,14 @@ int main() {
 
         if (ImGui::Button("Dark")) {
           ImGui::StyleColorsDark();
+          asm_editor.SetPalette(TextEditor::GetDarkPalette());
         }
 
         ImGui::SameLine();
 
         if (ImGui::Button("Light")) {
           ImGui::StyleColorsLight();
+          asm_editor.SetPalette(TextEditor::GetLightPalette());
         }
 
         ImGui::End();
