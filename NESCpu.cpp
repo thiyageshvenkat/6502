@@ -8,6 +8,12 @@ void CPU::write(uint16_t addr, uint8_t value) { // write helper function
   memory[addr] = value;
 }
 
+void CPU::reset() { // initialize PC from reset vector
+  uint16_t low = read(0xFFFC);
+  uint16_t high = read(0xFFFD);
+  PC = ((uint16_t)high << 8) | low;
+}
+
 uint8_t CPU::fetch() {
   fetched = read(address);
   return fetched;

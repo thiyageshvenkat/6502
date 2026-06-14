@@ -31,7 +31,12 @@ uint8_t ABSX(CPU& cpu);
 uint8_t ABSY(CPU& cpu);
 uint8_t REL(CPU& cpu);
 uint8_t ZPX(CPU& cpu);
+uint8_t ZPY(CPU& cpu);
 uint8_t IND(CPU& cpu);
+uint8_t IMP(CPU& cpu);
+uint8_t ACC(CPU& cpu);
+uint8_t IZX(CPU& cpu);
+uint8_t IZY(CPU& cpu);
 
 // global opcode table (256 possible opcodes)
 extern Instruction table[256];
