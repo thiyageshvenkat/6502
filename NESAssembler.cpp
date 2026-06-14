@@ -38,7 +38,7 @@ static int findOpcode(const std::string& name, AddrMode mode) {
 }
 
 static int findOpcodeType(const std::string& name, const std::string& arg) {
-  if (arg.empty()) { return findOpcode(name, nullptr); } // IMP: no operand
+  if (arg.empty()) { return findOpcode(name, IMP); } // IMP: no operand
   if (arg[0] == '#') { return findOpcode(name, IMM); } // IMM: #$01
   int rel = findOpcode(name, REL);
   if (rel != -1) { return rel; } // REL, for branches

@@ -12,6 +12,8 @@ void CPU::reset() { // initialize PC from reset vector
   uint16_t low = read(0xFFFC);
   uint16_t high = read(0xFFFD);
   PC = ((uint16_t)high << 8) | low;
+  atAccumulator = false;
+  jammed = false;
 }
 
 uint8_t CPU::fetch() {

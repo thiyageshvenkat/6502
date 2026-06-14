@@ -30,6 +30,7 @@ struct CPU {
   */
   uint16_t PC = 0;      // Program Counter
   bool atAccumulator = false;     // whether the instruction operates directly on the accumulator (e.g. ASL A)
+  bool jammed = false;  // unofficial KIL/JAM opcodes lock the CPU
   uint8_t memory[65536]{}; // initialize full 64KB memory
 
   // read helper function (reads a byte from memory)

@@ -96,6 +96,14 @@ uint8_t IZY(CPU& cpu) {
 
 // Instructions
 
+static void setFlag(CPU& cpu, uint8_t flag, bool value) {
+  if (value) {
+    cpu.P |= flag;
+  } else {
+    cpu.P &= ~flag;
+  }
+}
+
 void LDA(CPU& cpu) {
   cpu.A = cpu.fetch();
   cpu.setZN(cpu.A);
@@ -259,19 +267,19 @@ void JMP(CPU& cpu) {
 
 void ADC(CPU& cpu) { // good operation to learn about my emulator architecture
   uint8_t value = cpu.fetch(); // fetch operand
+  uint8_t oldA = cpu.A;
 
   // Perform addition with carry flag (C is bit 0 of P)
   uint16_t sum = cpu.A + value + (cpu.P & 0x01);
+  uint8_t result = sum & 0xFF;
 
   // Set carry flag (C) if result exceeds 8 bits
-  if (sum > 0xFF) {
-    cpu.P |= 0x01;   // set carry
-  } else {
-    cpu.P &= ~0x01;  // clear carry
-  }
+  setFlag(cpu, 0x01, sum > 0xFF);
+  setFlag(cpu, 0x40, (~(oldA ^ value) & (oldA ^ result) & 0x80) != 0);
+
   // Store lower 8 bits of result back into A
   // Extra bit goes to carry flag
-  cpu.A = sum & 0xFF;
+  cpu.A = result;
 
   // Update zero and negative flags based on result
   cpu.setZN(cpu.A);
@@ -279,22 +287,22 @@ void ADC(CPU& cpu) { // good operation to learn about my emulator architecture
 
 void SBC(CPU& cpu) { // good operation to learn about my emulator architecture
   uint8_t value = cpu.fetch(); // fetch operand
+  uint8_t oldA = cpu.A;
 
   // Perform subtraction with carry flag (C is bit 0 of P)
   // SBC = A - value - (1 - C)
   uint8_t carry = cpu.P & 0x01;
   uint16_t difference = cpu.A - value - (1 - carry);
+  uint8_t result = difference & 0xFF;
 
   // Set carry flag (C) if no borrow occurred
   // (C = 1 means no borrow, C = 0 means borrow)
-  if (cpu.A >= value + (1 - carry))
-    cpu.P |= 0x01;   // set carry
-  else
-    cpu.P &= ~0x01;  // clear carry
+  setFlag(cpu, 0x01, cpu.A >= value + (1 - carry));
+  setFlag(cpu, 0x40, ((oldA ^ result) & (oldA ^ value) & 0x80) != 0);
 
   // Store lower 8 bits of result back into A
   // Extra bit goes to carry flag
-  cpu.A = difference & 0xFF;
+  cpu.A = result;
 
   // Update zero and negative flags based on result
   cpu.setZN(cpu.A);
@@ -333,7 +341,9 @@ void PHP(CPU& cpu) {
 
 void PLP(CPU& cpu) {
   cpu.SP++;
-  cpu.P = (cpu.read(0x0100 + cpu.SP) | 0x20); // cpu.P |= => unused bit 5 is always set to 1, minor 6502 quirk
+  cpu.P = cpu.read(0x0100 + cpu.SP);
+  cpu.P |= 0x20;   // unused bit 5 always set
+  cpu.P &= ~0x10;  // B is not kept internally
 }
 
 void JSR(CPU& cpu) {
@@ -534,172 +544,391 @@ void ROR(CPU& cpu) {
   }
 }
 
+void KIL(CPU& cpu) {
+  cpu.jammed = true;
+}
+
+void SLO(CPU& cpu) {
+  ASL(cpu);
+  ORA(cpu);
+}
+
+void RLA(CPU& cpu) {
+  ROL(cpu);
+  AND(cpu);
+}
+
+void SRE(CPU& cpu) {
+  LSR(cpu);
+  EOR(cpu);
+}
+
+void RRA(CPU& cpu) {
+  ROR(cpu);
+  ADC(cpu);
+}
+
+void DCP(CPU& cpu) {
+  DEC(cpu);
+  CMP(cpu);
+}
+
+void ISC(CPU& cpu) {
+  INC(cpu);
+  SBC(cpu);
+}
+
+void LAX(CPU& cpu) {
+  uint8_t value = cpu.fetch();
+  cpu.A = value;
+  cpu.X = value;
+  cpu.setZN(value);
+}
+
+void SAX(CPU& cpu) {
+  cpu.write(cpu.address, cpu.A & cpu.X);
+}
+
+void ANC(CPU& cpu) {
+  cpu.A &= cpu.fetch();
+  cpu.setZN(cpu.A);
+  setFlag(cpu, 0x01, (cpu.A & 0x80) != 0);
+}
+
+void ALR(CPU& cpu) {
+  cpu.A &= cpu.fetch();
+  setFlag(cpu, 0x01, (cpu.A & 0x01) != 0);
+  cpu.A >>= 1;
+  cpu.setZN(cpu.A);
+}
+
+void ARR(CPU& cpu) {
+  cpu.A &= cpu.fetch();
+  uint8_t carryIn = cpu.P & 0x01;
+  cpu.A = (cpu.A >> 1) | (carryIn << 7);
+  cpu.setZN(cpu.A);
+  setFlag(cpu, 0x01, (cpu.A & 0x40) != 0);
+  setFlag(cpu, 0x40, ((cpu.A >> 6) ^ (cpu.A >> 5)) & 0x01);
+}
+
+void XAA(CPU& cpu) {
+  cpu.A = cpu.X & cpu.fetch();
+  cpu.setZN(cpu.A);
+}
+
+void AHX(CPU& cpu) {
+  uint8_t highPlusOne = ((cpu.address >> 8) + 1) & 0xFF;
+  cpu.write(cpu.address, cpu.A & cpu.X & highPlusOne);
+}
+
+void TAS(CPU& cpu) {
+  cpu.SP = cpu.A & cpu.X;
+  uint8_t highPlusOne = ((cpu.address >> 8) + 1) & 0xFF;
+  cpu.write(cpu.address, cpu.SP & highPlusOne);
+}
+
+void SHY(CPU& cpu) {
+  uint8_t highPlusOne = ((cpu.address >> 8) + 1) & 0xFF;
+  cpu.write(cpu.address, cpu.Y & highPlusOne);
+}
+
+void SHX(CPU& cpu) {
+  uint8_t highPlusOne = ((cpu.address >> 8) + 1) & 0xFF;
+  cpu.write(cpu.address, cpu.X & highPlusOne);
+}
+
+void LAS(CPU& cpu) {
+  uint8_t value = cpu.fetch() & cpu.SP;
+  cpu.A = value;
+  cpu.X = value;
+  cpu.SP = value;
+  cpu.setZN(value);
+}
+
+void AXS(CPU& cpu) {
+  uint8_t value = cpu.fetch();
+  uint8_t ax = cpu.A & cpu.X;
+  uint16_t result = ax - value;
+  setFlag(cpu, 0x01, ax >= value);
+  cpu.X = result & 0xFF;
+  cpu.setZN(cpu.X);
+}
+
 Instruction table[256] = {};
 
 void initTable() {
   table[0x00] = {"BRK", IMP,  BRK, 1, 7};
   table[0x01] = {"ORA", IZX,  ORA, 2, 6};
+  table[0x02] = {"KIL", IMP,  KIL, 1, 0};
+  table[0x03] = {"SLO", IZX,  SLO, 2, 8};
+  table[0x04] = {"NOP", ZP,   NOP, 2, 3};
   table[0x05] = {"ORA", ZP,   ORA, 2, 3};
   table[0x06] = {"ASL", ZP,   ASL, 2, 5};
+  table[0x07] = {"SLO", ZP,   SLO, 2, 5};
   table[0x08] = {"PHP", IMP,  PHP, 1, 3};
   table[0x09] = {"ORA", IMM,  ORA, 2, 2};
   table[0x0A] = {"ASL", ACC,  ASL, 1, 2};
+  table[0x0B] = {"ANC", IMM,  ANC, 2, 2};
+  table[0x0C] = {"NOP", ABS,  NOP, 3, 4};
   table[0x0D] = {"ORA", ABS,  ORA, 3, 4};
   table[0x0E] = {"ASL", ABS,  ASL, 3, 6};
+  table[0x0F] = {"SLO", ABS,  SLO, 3, 6};
   table[0x10] = {"BPL", REL,  BPL, 2, 2};
   table[0x11] = {"ORA", IZY,  ORA, 2, 5};
+  table[0x12] = {"KIL", IMP,  KIL, 1, 0};
+  table[0x13] = {"SLO", IZY,  SLO, 2, 8};
+  table[0x14] = {"NOP", ZPX,  NOP, 2, 4};
   table[0x15] = {"ORA", ZPX,  ORA, 2, 4};
   table[0x16] = {"ASL", ZPX,  ASL, 2, 6};
+  table[0x17] = {"SLO", ZPX,  SLO, 2, 6};
   table[0x18] = {"CLC", IMP,  CLC, 1, 2};
   table[0x19] = {"ORA", ABSY, ORA, 3, 4};
+  table[0x1A] = {"NOP", IMP,  NOP, 1, 2};
+  table[0x1B] = {"SLO", ABSY, SLO, 3, 7};
+  table[0x1C] = {"NOP", ABSX, NOP, 3, 4};
   table[0x1D] = {"ORA", ABSX, ORA, 3, 4};
   table[0x1E] = {"ASL", ABSX, ASL, 3, 7};
+  table[0x1F] = {"SLO", ABSX, SLO, 3, 7};
   table[0x20] = {"JSR", ABS,  JSR, 3, 6};
   table[0x21] = {"AND", IZX,  AND, 2, 6};
+  table[0x22] = {"KIL", IMP,  KIL, 1, 0};
+  table[0x23] = {"RLA", IZX,  RLA, 2, 8};
   table[0x24] = {"BIT", ZP,   BIT, 2, 3};
   table[0x25] = {"AND", ZP,   AND, 2, 3};
   table[0x26] = {"ROL", ZP,   ROL, 2, 5};
+  table[0x27] = {"RLA", ZP,   RLA, 2, 5};
   table[0x28] = {"PLP", IMP,  PLP, 1, 4};
   table[0x29] = {"AND", IMM,  AND, 2, 2};
   table[0x2A] = {"ROL", ACC,  ROL, 1, 2};
+  table[0x2B] = {"ANC", IMM,  ANC, 2, 2};
   table[0x2C] = {"BIT", ABS,  BIT, 3, 4};
   table[0x2D] = {"AND", ABS,  AND, 3, 4};
   table[0x2E] = {"ROL", ABS,  ROL, 3, 6};
+  table[0x2F] = {"RLA", ABS,  RLA, 3, 6};
   table[0x30] = {"BMI", REL,  BMI, 2, 2};
   table[0x31] = {"AND", IZY,  AND, 2, 5};
+  table[0x32] = {"KIL", IMP,  KIL, 1, 0};
+  table[0x33] = {"RLA", IZY,  RLA, 2, 8};
+  table[0x34] = {"NOP", ZPX,  NOP, 2, 4};
   table[0x35] = {"AND", ZPX,  AND, 2, 4};
   table[0x36] = {"ROL", ZPX,  ROL, 2, 6};
+  table[0x37] = {"RLA", ZPX,  RLA, 2, 6};
   table[0x38] = {"SEC", IMP,  SEC, 1, 2};
   table[0x39] = {"AND", ABSY, AND, 3, 4};
+  table[0x3A] = {"NOP", IMP,  NOP, 1, 2};
+  table[0x3B] = {"RLA", ABSY, RLA, 3, 7};
+  table[0x3C] = {"NOP", ABSX, NOP, 3, 4};
   table[0x3D] = {"AND", ABSX, AND, 3, 4};
   table[0x3E] = {"ROL", ABSX, ROL, 3, 7};
+  table[0x3F] = {"RLA", ABSX, RLA, 3, 7};
   table[0x40] = {"RTI", IMP,  RTI, 1, 6};
   table[0x41] = {"EOR", IZX,  EOR, 2, 6};
+  table[0x42] = {"KIL", IMP,  KIL, 1, 0};
+  table[0x43] = {"SRE", IZX,  SRE, 2, 8};
+  table[0x44] = {"NOP", ZP,   NOP, 2, 3};
   table[0x45] = {"EOR", ZP,   EOR, 2, 3};
   table[0x46] = {"LSR", ZP,   LSR, 2, 5};
+  table[0x47] = {"SRE", ZP,   SRE, 2, 5};
   table[0x48] = {"PHA", IMP,  PHA, 1, 3};
   table[0x49] = {"EOR", IMM,  EOR, 2, 2};
   table[0x4A] = {"LSR", ACC,  LSR, 1, 2};
+  table[0x4B] = {"ALR", IMM,  ALR, 2, 2};
   table[0x4C] = {"JMP", ABS,  JMP, 3, 3};
   table[0x4D] = {"EOR", ABS,  EOR, 3, 4};
   table[0x4E] = {"LSR", ABS,  LSR, 3, 6};
+  table[0x4F] = {"SRE", ABS,  SRE, 3, 6};
   table[0x50] = {"BVC", REL,  BVC, 2, 2};
   table[0x51] = {"EOR", IZY,  EOR, 2, 5};
+  table[0x52] = {"KIL", IMP,  KIL, 1, 0};
+  table[0x53] = {"SRE", IZY,  SRE, 2, 8};
+  table[0x54] = {"NOP", ZPX,  NOP, 2, 4};
   table[0x55] = {"EOR", ZPX,  EOR, 2, 4};
   table[0x56] = {"LSR", ZPX,  LSR, 2, 6};
+  table[0x57] = {"SRE", ZPX,  SRE, 2, 6};
   table[0x58] = {"CLI", IMP,  CLI, 1, 2};
   table[0x59] = {"EOR", ABSY, EOR, 3, 4};
+  table[0x5A] = {"NOP", IMP,  NOP, 1, 2};
+  table[0x5B] = {"SRE", ABSY, SRE, 3, 7};
+  table[0x5C] = {"NOP", ABSX, NOP, 3, 4};
   table[0x5D] = {"EOR", ABSX, EOR, 3, 4};
   table[0x5E] = {"LSR", ABSX, LSR, 3, 7};
+  table[0x5F] = {"SRE", ABSX, SRE, 3, 7};
   table[0x60] = {"RTS", IMP,  RTS, 1, 6};
   table[0x61] = {"ADC", IZX,  ADC, 2, 6};
+  table[0x62] = {"KIL", IMP,  KIL, 1, 0};
+  table[0x63] = {"RRA", IZX,  RRA, 2, 8};
+  table[0x64] = {"NOP", ZP,   NOP, 2, 3};
   table[0x65] = {"ADC", ZP,   ADC, 2, 3};
   table[0x66] = {"ROR", ZP,   ROR, 2, 5};
+  table[0x67] = {"RRA", ZP,   RRA, 2, 5};
   table[0x68] = {"PLA", IMP,  PLA, 1, 4};
   table[0x69] = {"ADC", IMM,  ADC, 2, 2};
   table[0x6A] = {"ROR", ACC,  ROR, 1, 2};
+  table[0x6B] = {"ARR", IMM,  ARR, 2, 2};
   table[0x6C] = {"JMP", IND,  JMP, 3, 5};
   table[0x6D] = {"ADC", ABS,  ADC, 3, 4};
   table[0x6E] = {"ROR", ABS,  ROR, 3, 6};
+  table[0x6F] = {"RRA", ABS,  RRA, 3, 6};
   table[0x70] = {"BVS", REL,  BVS, 2, 2};
   table[0x71] = {"ADC", IZY,  ADC, 2, 5};
+  table[0x72] = {"KIL", IMP,  KIL, 1, 0};
+  table[0x73] = {"RRA", IZY,  RRA, 2, 8};
+  table[0x74] = {"NOP", ZPX,  NOP, 2, 4};
   table[0x75] = {"ADC", ZPX,  ADC, 2, 4};
   table[0x76] = {"ROR", ZPX,  ROR, 2, 6};
+  table[0x77] = {"RRA", ZPX,  RRA, 2, 6};
   table[0x78] = {"SEI", IMP,  SEI, 1, 2};
   table[0x79] = {"ADC", ABSY, ADC, 3, 4};
+  table[0x7A] = {"NOP", IMP,  NOP, 1, 2};
+  table[0x7B] = {"RRA", ABSY, RRA, 3, 7};
+  table[0x7C] = {"NOP", ABSX, NOP, 3, 4};
   table[0x7D] = {"ADC", ABSX, ADC, 3, 4};
   table[0x7E] = {"ROR", ABSX, ROR, 3, 7};
+  table[0x7F] = {"RRA", ABSX, RRA, 3, 7};
+  table[0x80] = {"NOP", IMM,  NOP, 2, 2};
   table[0x81] = {"STA", IZX,  STA, 2, 6};
+  table[0x82] = {"NOP", IMM,  NOP, 2, 2};
+  table[0x83] = {"SAX", IZX,  SAX, 2, 6};
   table[0x84] = {"STY", ZP,   STY, 2, 3};
   table[0x85] = {"STA", ZP,   STA, 2, 3};
   table[0x86] = {"STX", ZP,   STX, 2, 3};
+  table[0x87] = {"SAX", ZP,   SAX, 2, 3};
   table[0x88] = {"DEY", IMP,  DEY, 1, 2};
+  table[0x89] = {"NOP", IMM,  NOP, 2, 2};
   table[0x8A] = {"TXA", IMP,  TXA, 1, 2};
+  table[0x8B] = {"XAA", IMM,  XAA, 2, 2};
   table[0x8C] = {"STY", ABS,  STY, 3, 4};
   table[0x8D] = {"STA", ABS,  STA, 3, 4};
   table[0x8E] = {"STX", ABS,  STX, 3, 4};
+  table[0x8F] = {"SAX", ABS,  SAX, 3, 4};
   table[0x90] = {"BCC", REL,  BCC, 2, 2};
   table[0x91] = {"STA", IZY,  STA, 2, 6};
+  table[0x92] = {"KIL", IMP,  KIL, 1, 0};
+  table[0x93] = {"AHX", IZY,  AHX, 2, 6};
   table[0x94] = {"STY", ZPX,  STY, 2, 4};
   table[0x95] = {"STA", ZPX,  STA, 2, 4};
   table[0x96] = {"STX", ZPY,  STX, 2, 4};
+  table[0x97] = {"SAX", ZPY,  SAX, 2, 4};
   table[0x98] = {"TYA", IMP,  TYA, 1, 2};
   table[0x99] = {"STA", ABSY, STA, 3, 5};
   table[0x9A] = {"TXS", IMP,  TXS, 1, 2};
+  table[0x9B] = {"TAS", ABSY, TAS, 3, 5};
+  table[0x9C] = {"SHY", ABSX, SHY, 3, 5};
   table[0x9D] = {"STA", ABSX, STA, 3, 5};
+  table[0x9E] = {"SHX", ABSY, SHX, 3, 5};
+  table[0x9F] = {"AHX", ABSY, AHX, 3, 5};
   table[0xA0] = {"LDY", IMM,  LDY, 2, 2};
   table[0xA1] = {"LDA", IZX,  LDA, 2, 6};
   table[0xA2] = {"LDX", IMM,  LDX, 2, 2};
+  table[0xA3] = {"LAX", IZX,  LAX, 2, 6};
   table[0xA4] = {"LDY", ZP,   LDY, 2, 3};
   table[0xA5] = {"LDA", ZP,   LDA, 2, 3};
   table[0xA6] = {"LDX", ZP,   LDX, 2, 3};
+  table[0xA7] = {"LAX", ZP,   LAX, 2, 3};
   table[0xA8] = {"TAY", IMP,  TAY, 1, 2};
   table[0xA9] = {"LDA", IMM,  LDA, 2, 2};
   table[0xAA] = {"TAX", IMP,  TAX, 1, 2};
+  table[0xAB] = {"LAX", IMM,  LAX, 2, 2};
   table[0xAC] = {"LDY", ABS,  LDY, 3, 4};
   table[0xAD] = {"LDA", ABS,  LDA, 3, 4};
   table[0xAE] = {"LDX", ABS,  LDX, 3, 4};
+  table[0xAF] = {"LAX", ABS,  LAX, 3, 4};
   table[0xB0] = {"BCS", REL,  BCS, 2, 2};
   table[0xB1] = {"LDA", IZY,  LDA, 2, 5};
+  table[0xB2] = {"KIL", IMP,  KIL, 1, 0};
+  table[0xB3] = {"LAX", IZY,  LAX, 2, 5};
   table[0xB4] = {"LDY", ZPX,  LDY, 2, 4};
   table[0xB5] = {"LDA", ZPX,  LDA, 2, 4};
   table[0xB6] = {"LDX", ZPY,  LDX, 2, 4};
+  table[0xB7] = {"LAX", ZPY,  LAX, 2, 4};
   table[0xB8] = {"CLV", IMP,  CLV, 1, 2};
   table[0xB9] = {"LDA", ABSY, LDA, 3, 4};
   table[0xBA] = {"TSX", IMP,  TSX, 1, 2};
+  table[0xBB] = {"LAS", ABSY, LAS, 3, 4};
   table[0xBC] = {"LDY", ABSX, LDY, 3, 4};
   table[0xBD] = {"LDA", ABSX, LDA, 3, 4};
   table[0xBE] = {"LDX", ABSY, LDX, 3, 4};
+  table[0xBF] = {"LAX", ABSY, LAX, 3, 4};
   table[0xC0] = {"CPY", IMM,  CPY, 2, 2};
   table[0xC1] = {"CMP", IZX,  CMP, 2, 6};
+  table[0xC2] = {"NOP", IMM,  NOP, 2, 2};
+  table[0xC3] = {"DCP", IZX,  DCP, 2, 8};
   table[0xC4] = {"CPY", ZP,   CPY, 2, 3};
   table[0xC5] = {"CMP", ZP,   CMP, 2, 3};
   table[0xC6] = {"DEC", ZP,   DEC, 2, 5};
+  table[0xC7] = {"DCP", ZP,   DCP, 2, 5};
   table[0xC8] = {"INY", IMP,  INY, 1, 2};
   table[0xC9] = {"CMP", IMM,  CMP, 2, 2};
   table[0xCA] = {"DEX", IMP,  DEX, 1, 2};
+  table[0xCB] = {"AXS", IMM,  AXS, 2, 2};
   table[0xCC] = {"CPY", ABS,  CPY, 3, 4};
   table[0xCD] = {"CMP", ABS,  CMP, 3, 4};
   table[0xCE] = {"DEC", ABS,  DEC, 3, 6};
+  table[0xCF] = {"DCP", ABS,  DCP, 3, 6};
   table[0xD0] = {"BNE", REL,  BNE, 2, 2};
   table[0xD1] = {"CMP", IZY,  CMP, 2, 5};
+  table[0xD2] = {"KIL", IMP,  KIL, 1, 0};
+  table[0xD3] = {"DCP", IZY,  DCP, 2, 8};
+  table[0xD4] = {"NOP", ZPX,  NOP, 2, 4};
   table[0xD5] = {"CMP", ZPX,  CMP, 2, 4};
   table[0xD6] = {"DEC", ZPX,  DEC, 2, 6};
+  table[0xD7] = {"DCP", ZPX,  DCP, 2, 6};
   table[0xD8] = {"CLD", IMP,  CLD, 1, 2};
   table[0xD9] = {"CMP", ABSY, CMP, 3, 4};
+  table[0xDA] = {"NOP", IMP,  NOP, 1, 2};
+  table[0xDB] = {"DCP", ABSY, DCP, 3, 7};
+  table[0xDC] = {"NOP", ABSX, NOP, 3, 4};
   table[0xDD] = {"CMP", ABSX, CMP, 3, 4};
   table[0xDE] = {"DEC", ABSX, DEC, 3, 7};
+  table[0xDF] = {"DCP", ABSX, DCP, 3, 7};
   table[0xE0] = {"CPX", IMM,  CPX, 2, 2};
   table[0xE1] = {"SBC", IZX,  SBC, 2, 6};
+  table[0xE2] = {"NOP", IMM,  NOP, 2, 2};
+  table[0xE3] = {"ISC", IZX,  ISC, 2, 8};
   table[0xE4] = {"CPX", ZP,   CPX, 2, 3};
   table[0xE5] = {"SBC", ZP,   SBC, 2, 3};
   table[0xE6] = {"INC", ZP,   INC, 2, 5};
+  table[0xE7] = {"ISC", ZP,   ISC, 2, 5};
   table[0xE8] = {"INX", IMP,  INX, 1, 2};
   table[0xE9] = {"SBC", IMM,  SBC, 2, 2};
   table[0xEA] = {"NOP", IMP,  NOP, 1, 2};
+  table[0xEB] = {"SBC", IMM,  SBC, 2, 2};
   table[0xEC] = {"CPX", ABS,  CPX, 3, 4};
   table[0xED] = {"SBC", ABS,  SBC, 3, 4};
   table[0xEE] = {"INC", ABS,  INC, 3, 6};
+  table[0xEF] = {"ISC", ABS,  ISC, 3, 6};
   table[0xF0] = {"BEQ", REL,  BEQ, 2, 2};
   table[0xF1] = {"SBC", IZY,  SBC, 2, 5};
+  table[0xF2] = {"KIL", IMP,  KIL, 1, 0};
+  table[0xF3] = {"ISC", IZY,  ISC, 2, 8};
+  table[0xF4] = {"NOP", ZPX,  NOP, 2, 4};
   table[0xF5] = {"SBC", ZPX,  SBC, 2, 4};
   table[0xF6] = {"INC", ZPX,  INC, 2, 6};
+  table[0xF7] = {"ISC", ZPX,  ISC, 2, 6};
   table[0xF8] = {"SED", IMP,  SED, 1, 2};
   table[0xF9] = {"SBC", ABSY, SBC, 3, 4};
+  table[0xFA] = {"NOP", IMP,  NOP, 1, 2};
+  table[0xFB] = {"ISC", ABSY, ISC, 3, 7};
+  table[0xFC] = {"NOP", ABSX, NOP, 3, 4};
   table[0xFD] = {"SBC", ABSX, SBC, 3, 4};
   table[0xFE] = {"INC", ABSX, INC, 3, 7};
+  table[0xFF] = {"ISC", ABSX, ISC, 3, 7};
 }
 
 
 StepTrace step(CPU& cpu) {
+  if (cpu.jammed) {
+    return {cpu.PC, cpu.read(cpu.PC), "KIL"};
+  }
+
   uint16_t oldPC = cpu.PC;
   uint8_t opcode = cpu.read(cpu.PC++);
   Instruction& inst = table[opcode];
 
   cpu.atAccumulator = false;
 
-  if (inst.addrmode) inst.addrmode(cpu);
-  if (inst.execute) inst.execute(cpu);
+  if (inst.addrmode) { inst.addrmode(cpu); }
+  if (inst.execute) { inst.execute(cpu); }
 
   return {oldPC, opcode, inst.name};
 }

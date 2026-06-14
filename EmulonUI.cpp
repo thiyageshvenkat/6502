@@ -64,6 +64,8 @@ static void writeTextFile(const std::string& path, const std::string& text) {
 static void loadProgramIntoCpu() {
     std::vector<uint8_t> program = assembleFile("program.asm"); // convert asm into bytes
 
+    cpu.jammed = false;
+
     for (size_t i = 0; i < program.size(); i++) {
         cpu.memory[0x8000 + i] = program[i]; // load program at test start address
     }
