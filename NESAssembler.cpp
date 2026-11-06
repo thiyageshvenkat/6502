@@ -95,9 +95,10 @@ static int findOpcodeType(const std::string& rawName, const std::string& rawArg)
   std::string name = upper(rawName);
   std::string arg = upper(compact(trim(rawArg)));
 
-  // IMP: no operand
+  // IMP/ACC: no operand
   if (arg.empty()) {
-    return findOpcode(name, IMP);
+    int impOpcodeNumber = findOpcode(name, IMP);
+    return impOpcodeNumber == -1 ? findOpcode(name, ACC) : impOpcodeNumber;
   }
 
   // ACC: A

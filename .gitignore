@@ -4,3 +4,5 @@ Emulon
 *.out
 *.exe
 imgui.ini
+.dvc
+*.asm

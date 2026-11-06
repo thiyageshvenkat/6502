@@ -11,6 +11,7 @@
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <algorithm>
 #include <vector>
 #include <cstdio>
 
@@ -33,14 +34,9 @@ static TextEditor::Language make6502Language() {
   lang.caseSensitive = false;
   lang.singleLineComment = ";";
 
-  lang.keywords = {
-    "ADC", "AND", "ASL", "BCC", "BCS", "BEQ", "BIT", "BMI", "BNE", "BPL",
-    "BRK", "BVC", "BVS", "CLC", "CLD", "CLI", "CLV", "CMP", "CPX", "CPY",
-    "DEC", "DEX", "DEY", "EOR", "INC", "INX", "INY", "JMP", "JSR", "LDA",
-    "LDX", "LDY", "LSR", "NOP", "ORA", "PHA", "PHP", "PLA", "PLP", "ROL",
-    "ROR", "RTI", "RTS", "SBC", "SEC", "SED", "SEI", "STA", "STX", "STY",
-    "TAX", "TAY", "TSX", "TXA", "TXS", "TYA"
-  };
+  for (const Instruction& instruction : table) {
+      lang.keywords.insert(instruction.name);
+  }
 
   return lang;
 }
@@ -93,13 +89,13 @@ int main() {
         nullptr // no shared OpenGL context
     );
 
-    if (!window) { // if window creation fails, shut down GLFW and return error code 1 
+    if (!window) { // if window creation fails, shut down GLFW and return error code 1
         glfwTerminate();
         return 1;
     }
 
     glfwMakeContextCurrent(window); // makes OpenGL context active
-    glfwSwapInterval(1); // enable vsync to limit refresh rate to monitor refresh rate 
+    glfwSwapInterval(1); // enable vsync to limit refresh rate to monitor refresh rate
 
     IMGUI_CHECKVERSION(); // checks if the ImGui version in the headers match the compiled ImGui code
     ImGui::CreateContext(); // creates ImGui’s internal global state.
@@ -118,14 +114,17 @@ int main() {
     ImGuiIO& io = ImGui::GetIO();
 
     io.Fonts->AddFontFromFileTTF(
-        "/mnt/c/Windows/Fonts/consola.ttf",
+        "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
         18.0f
     );
+    if (io.Fonts == nullptr) {
+      io.Fonts->AddFontDefault();
+    }
 
     ImGui::StyleColorsDark();
 
     ImGui_ImplGlfw_InitForOpenGL(window, true); // connects ImGui to GLFW
-    ImGui_ImplOpenGL3_Init(glsl_version); // Connects ImGui to OpenGL 
+    ImGui_ImplOpenGL3_Init(glsl_version); // Connects ImGui to OpenGL
 
     // emulator setup before the UI starts running
     initTable(); // fill opcode lookup table
@@ -166,7 +165,7 @@ int main() {
 
       ImGui::Begin("Emulon", nullptr, flags); // main app layout window
 
-      
+
       // File Explorer
 
       if (ImGui::Button("File Explorer")) {
